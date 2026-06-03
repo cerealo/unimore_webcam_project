@@ -7,8 +7,9 @@ model.eval()
 
 model.info()
 
-#model(source="psyduck.jpg", show=True)
+#results = model(source="psyduck2.jpg", points=[400, 200], show=True, save=True)
 
-results = model(source="psyduck.jpg", points=[400, 200], show=True, save=True)
+results = model(source="psyduck2.jpg", show=True, save=True)
 
 print(results)
+print(len(results[0].masks))
