@@ -12,3 +12,4 @@ Visualizza a schermo la visuale della webcam connessa al robottino
 
 ## Crediti 
 [lucacrepaldi07](https://github.com/lucacrepaldi07)
+[jacktelo](https://github.com/jacktelo)
