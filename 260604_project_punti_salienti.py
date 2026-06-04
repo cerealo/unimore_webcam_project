@@ -10,33 +10,61 @@ while True:
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # ✔ riduce ombre e rumore
-    gray = cv2.GaussianBlur(gray, (21, 21), 0)
+    # ======================================================
+    # 1) PRE-PROCESSING MIGLIORATO (meno rumore + meno ombre)
+    # ======================================================
+    gray_blur = cv2.GaussianBlur(gray, (11, 11), 0)
 
-    # ✔ soglia automatica
+    # ======================================================
+    # 2) SOGGLIA AUTOMATICA STABILE
+    # ======================================================
     _, thresh = cv2.threshold(
-        gray, 0, 255,
+        gray_blur, 0, 255,
         cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
     )
 
-    # ✔ pulizia (il tuo kernel integrato correttamente)
-    kernel = np.ones((9, 9), np.uint8)
+    # ======================================================
+    # 3) RIMOZIONE BLOB PICCOLI (OPEN più forte ma controllato)
+    # ======================================================
+    kernel_small = np.ones((3, 3), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_small, iterations=2)
 
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+    # ======================================================
+    # 4) TAPPA BUCCHI / UNISCE OGGETTI
+    # ======================================================
+    kernel_med = np.ones((7, 7), np.uint8)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel_med, iterations=2)
 
-    # trova contorni
+    # ======================================================
+    # 5) FILL HOLES (rendere oggetti solidi)
+    # ======================================================
+    contours_fill, _ = cv2.findContours(
+        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    cv2.drawContours(thresh, contours_fill, -1, 255, thickness=cv2.FILLED)
+
+    # ======================================================
+    # DEBUG VIEW
+    # ======================================================
+    cv2.imshow("clean mask", thresh)
+
+    # ======================================================
+    # 6) CONTORNI FINALI
+    # ======================================================
     contours, _ = cv2.findContours(
         thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
 
+    h, w = gray.shape
+
     for c in contours:
         area = cv2.contourArea(c)
 
-        # elimina rumore
-        if area < 800:
+        # elimina rumore residuo
+        if area < 1000:
             continue
 
+        # centro di massa
         M = cv2.moments(c)
         if M["m00"] == 0:
             continue
@@ -44,19 +72,18 @@ while True:
         cx = int(M["m10"] / M["m00"])
         cy = int(M["m01"] / M["m00"])
 
-        # disegna contorno
+        # disegno contorno
         cv2.drawContours(frame, [c], -1, (0, 255, 0), 2)
 
-        # centro di massa
+        # centro
         cv2.circle(frame, (cx, cy), 6, (0, 0, 255), -1)
 
-        # etichetta
         cv2.putText(frame, "OBJ", (cx + 5, cy - 5),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
 
-    cv2.imshow("Live Multi Object + Shadows Reduced", frame)
+    cv2.imshow("Live Multi Object (UPGRADED)", frame)
 
-    if cv2.waitKey(1) & 0xFF == 27:  # ESC
+    if cv2.waitKey(1) & 0xFF == 27:
         break
 
 cap.release()
