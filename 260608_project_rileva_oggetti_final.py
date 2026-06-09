@@ -7,10 +7,10 @@ from ultralytics import SAM
 # =========================================================
 
 # Immagine da analizzare
-IMAGE_PATH = "psyduck.jpg"
+IMAGE_PATH = "posapsyduck.jpg"
 
 # Numero di cluster per KMeans
-K = 7
+K = 5
 
 # Area minima per considerare valido un oggetto
 MIN_AREA = 800
@@ -21,7 +21,6 @@ MIN_AREA = 800
 # =========================================================
 
 def get_color_name(h, s, v):
-
     # Nero
     if v < 40:
         return "Black"
@@ -61,131 +60,9 @@ def get_color_name(h, s, v):
 
     return "Unknown"
 
-
-# =========================================================
-# FILTRO BOUNDING BOX SUI BORDI
-# =========================================================
-#
-# Elimina bounding box che toccano
-# i bordi dell'immagine.
-#
-# Utile per rimuovere:
-# - sfondo
-# - frame
-# - artefatti laterali
-#
-# =========================================================
-
-def filter_border_bboxes(boxes, img_shape, margin=3):
-
-    h, w = img_shape[:2]
-
-    out = []
-
-    for (x, y, w1, h1) in boxes:
-
-        # bordo sinistro o superiore
-        if x <= margin or y <= margin:
-            continue
-
-        # bordo destro o inferiore
-        if (x + w1) >= (w - margin):
-            continue
-
-        if (y + h1) >= (h - margin):
-            continue
-
-        out.append((x, y, w1, h1))
-
-    return out
-
-
-# =========================================================
-# IOU (INTERSECTION OVER UNION)
-# =========================================================
-#
-# Misura quanto due bbox si sovrappongono.
-#
-# 0 = nessuna sovrapposizione
-# 1 = identiche
-#
-# =========================================================
-
-def iou(a, b):
-
-    xA = max(a[0], b[0])
-    yA = max(a[1], b[1])
-
-    xB = min(a[0] + a[2], b[0] + b[2])
-    yB = min(a[1] + a[3], b[1] + b[3])
-
-    interW = max(0, xB - xA)
-    interH = max(0, yB - yA)
-
-    inter = interW * interH
-
-    if inter == 0:
-        return 0
-
-    areaA = a[2] * a[3]
-    areaB = b[2] * b[3]
-
-    return inter / float(areaA + areaB - inter + 1e-6)
-
-
-# =========================================================
-# RIMOZIONE BBOX DUPLICATE
-# =========================================================
-#
-# Se due bbox si sovrappongono troppo,
-# tiene solo quella più grande.
-#
-# =========================================================
-
-def filter_overlaps(boxes, thr=0.4):
-
-    boxes = sorted(
-        boxes,
-        key=lambda b: b[2] * b[3],
-        reverse=True
-    )
-
-    kept = []
-
-    for b in boxes:
-
-        keep = True
-
-        for k in kept:
-
-            if iou(b, k) > thr:
-                keep = False
-                break
-
-        if keep:
-            kept.append(b)
-
-    return kept
-
-
 # =========================================================
 # PIPELINE COMPLETA FILTRAGGIO BBOX
 # =========================================================
-
-def clean_bboxes(boxes, img_shape):
-
-    # filtro bordi
-    boxes = filter_border_bboxes(
-        boxes,
-        img_shape
-    )
-
-    # filtro duplicati
-    boxes = filter_overlaps(
-        boxes
-    )
-
-    return boxes
 
 # =========================================================
 # BBOX FILTERS
@@ -254,6 +131,16 @@ def filter_contained_bboxes(boxes, contain_thr=0.90):
 
     return kept
 
+# =========================================================
+# IOU (INTERSECTION OVER UNION)
+# =========================================================
+#
+# Misura quanto due bbox si sovrappongono.
+#
+# 0 = nessuna sovrapposizione
+# 1 = identiche
+#
+# =========================================================
 
 def iou(a, b):
 
@@ -275,6 +162,17 @@ def iou(a, b):
     areaB = b[2] * b[3]
 
     return inter / float(areaA + areaB - inter + 1e-6)
+
+
+# =========================================================
+# RIMOZIONE BBOX DUPLICATE
+# =========================================================
+#
+# Se due bbox si sovrappongono troppo,
+# tiene solo quella più grande.
+#
+# =========================================================
+
 
 
 def filter_overlaps(boxes, thr=0.4):
@@ -319,6 +217,48 @@ def clean_bboxes(boxes, img_shape):
     )
 
     return boxes
+
+def merge_points(points, dist_thr=35):
+
+    merged = []
+
+    for p in points:
+
+        keep = True
+
+        for q in merged:
+
+            d = np.hypot(
+                p[0] - q[0],
+                p[1] - q[1]
+            )
+
+            if d < dist_thr:
+                keep = False
+                break
+
+        if keep:
+            merged.append(p)
+
+    return merged
+
+# =========================================================
+# INVERTI COLORI DELLE BBOX
+# =========================================================
+
+def invert_bbox_colors(image, boxes, output_path="psyduck_inverted.png"):
+
+    inverted_img = image.copy()
+
+    for (x, y, w, h) in boxes:
+
+        roi = inverted_img[y:y+h, x:x+w]
+
+        inverted_img[y:y+h, x:x+w] = 255 - roi
+
+    cv2.imwrite(output_path, inverted_img)
+
+    return inverted_img
 
 # =========================================================
 # CARICAMENTO IMMAGINE
@@ -503,7 +443,6 @@ for i in range(K):
             (cx, cy)
         )
 
-
 # =========================================================
 # SAM
 # =========================================================
@@ -517,9 +456,10 @@ model = SAM("mobile_sam.pt")
 
 output = img.copy()
 
-all_points = (
+all_points = merge_points(
     psyduck_centroids +
-    color_centroids
+    color_centroids,
+    dist_thr=35
 )
 
 detections = []
@@ -535,7 +475,6 @@ for (x, y) in all_points:
 
     mask = (masks[0] > 0.5).astype(np.uint8) * 255
 
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5,5), np.uint8))
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -609,150 +548,6 @@ for d in detections:
     cv2.rectangle(output, (x,y), (x+w, y+h), (255,0,0), 2)
 
 # =========================================================
-# SAM
-# =========================================================
-#
-# Usa tutti i centroidi trovati (Psyduck + KMeans)
-# come prompt per segmentare oggetti con SAM.
-#
-# =========================================================
-
-model = SAM("mobile_sam.pt")
-
-# immagine di output su cui disegnare risultati finali
-output = img.copy()
-
-# unione di tutti i punti candidati
-all_points = (
-    psyduck_centroids +
-    color_centroids
-)
-
-# lista finale delle detection (bbox + contorno + centro)
-detections = []
-
-for (x, y) in all_points:
-
-    # inferenza SAM con punto guida
-    results = model(img, points=[[x, y]], labels=[1])
-
-    # estrazione maschere (tensor -> numpy)
-    masks = results[0].masks.data.cpu().numpy()
-
-    # se non trova maschere salta
-    if len(masks) == 0:
-        continue
-
-    # binarizzazione maschera principale
-    mask = (masks[0] > 0.5).astype(np.uint8) * 255
-
-    # pulizia rumore (piccoli buchi o pixel isolati)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5,5), np.uint8))
-
-    # estrazione contorni dalla maschera
-    contours, _ = cv2.findContours(
-        mask,
-        cv2.RETR_EXTERNAL,
-        cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    for c in contours:
-
-        # scarta oggetti troppo piccoli
-        if cv2.contourArea(c) < MIN_AREA:
-            continue
-
-        # centro di massa del contorno
-        M = cv2.moments(c)
-
-        if M["m00"] == 0:
-            continue
-
-        cx = int(M["m10"] / M["m00"])
-        cy = int(M["m01"] / M["m00"])
-
-        # coordinate pixel attivi della maschera
-        ys, xs = np.where(mask > 0)
-
-        # sicurezza: evita maschere vuote
-        if len(xs) == 0 or len(ys) == 0:
-            continue
-
-        # bounding box dalla maschera
-        x1 = xs.min()
-        y1 = ys.min()
-        x2 = xs.max()
-        y2 = ys.max()
-
-        # salva detection completa
-        detections.append({
-            "bbox": (x1, y1, x2 - x1, y2 - y1),
-            "contour": c,
-            "center": (cx, cy)
-        })
-
-
-# =========================================================
-# FILTER BBOX
-# =========================================================
-#
-# Qui applichi la pipeline di pulizia:
-# - rimuove bbox ai bordi
-# - rimuove bbox contenute
-# - rimuove bbox sovrapposte
-#
-# =========================================================
-
-boxes = [d["bbox"] for d in detections]
-
-filtered_boxes = clean_bboxes(boxes, output.shape)
-
-
-# =========================================================
-# DRAW ONLY VALID DETECTIONS
-# =========================================================
-#
-# Disegna SOLO le detection che hanno passato i filtri
-#
-# =========================================================
-
-for d in detections:
-
-    # se bbox eliminata dai filtri → skip
-    if d["bbox"] not in filtered_boxes:
-        continue
-
-    x, y, w, h = d["bbox"]
-
-    # contorno oggetto segmentato da SAM
-    cv2.drawContours(
-        output,
-        [d["contour"]],
-        -1,
-        (0,255,255),
-        2
-    )
-
-    # centro di massa del contorno
-    cv2.circle(
-        output,
-        d["center"],
-        5,
-        (0,0,255),
-        -1
-    )
-
-    # bounding box finale pulita
-    cv2.rectangle(
-        output,
-        (x,y),
-        (x+w, y+h),
-        (255,0,0),
-        2
-    )
-
-
-# =========================================================
 # OUTPUT FINALE
 # =========================================================
 #
@@ -763,6 +558,13 @@ for d in detections:
 #
 # =========================================================
 
-cv2.imshow("PSYDUCK FIXED + SAM", output)
+inverted_output = invert_bbox_colors(
+    img,
+    filtered_boxes,
+    "psyduck_inverted.png"
+)
+
+cv2.imshow("INVERTED BOXES", inverted_output)
+cv2.imshow("IMAGE", output)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
