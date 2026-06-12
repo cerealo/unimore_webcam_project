@@ -1,3 +1,5 @@
+<h5>README.md da completare una volta finito tutto</h5>
+
 # unimore_webcam_project
 Progetto per alternanza scuola-lavoro unimore mantova 2026
 
@@ -11,5 +13,5 @@ Stampa foto in formato .jpg, chiamata "psyduck.jpg di default
 Visualizza a schermo la visuale della webcam connessa al robottino 
 
 ## Crediti 
-[lucacrepaldi07](https://github.com/lucacrepaldi07)
+[lucacrepaldi07](https://github.com/lucacrepaldi07) <br>
 [jacktelo](https://github.com/jacktelo)
