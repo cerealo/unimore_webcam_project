@@ -1,0 +1,55 @@
+{
+    "name": "PCTO",
+    "workspaceFolder": "/pcto",
+    "workspaceMount": "src=${localWorkspaceFolder},dst=/pcto,type=bind,consistency=cached",
+    "dockerFile": "Dockerfile",
+    
+    "settings": {
+        "python.defaultInterpreterPath": "/usr/bin/python3"
+    },
+    
+    // Rimesso l'utente standard non-root
+    "remoteUser": "vscode", 
+    
+    "runArgs": [
+        // Debugging support
+        "--cap-add=SYS_PTRACE",
+        "--security-opt", "seccomp=unconfined",
+        
+        // SSH access
+        "-v", "${env:HOME}${env:USERPROFILE}/.ssh:/home/vscode/.ssh",
+        
+        // Media access
+        "-v", "/media:/media",
+        
+        // Graphics support
+        "--env=DISPLAY",
+        "--volume=${env:HOME}/.Xauthority:/home/vscode/.Xauthority:rw",
+        "--privileged",
+        
+        // Network & ROS2 Ports
+        "--net=host",
+        "-p", "7400-7500:7400-7500/udp",
+        "--add-host=host.docker.internal:host-gateway",
+        
+        // System limits
+        "--ulimit", "core=0",
+        
+        // Video devices
+        "--device=/dev/video*:/dev/video*",
+        "--device=/dev/dri:/dev/dri",
+        "--group-add=video",
+        "--device=/dev/video0"
+    ],
+
+    "extensions": [
+        "ms-vscode.cpptools",
+        "ms-python.python",
+        "eamodio.gitlens",
+        "twxs.cmake",
+        "mhutchie.git-graph",
+        "ms-iot.vscode-ros"
+    ],
+    
+    "postCreateCommand": "mkdir -p ws/src && echo 'PCTO container ready! Project workspace: /pcto/ws'"
+}
